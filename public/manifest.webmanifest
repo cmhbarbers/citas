@@ -1,1 +1,1 @@
-{"name":"CMH Barbers","short_name":"CMH Barbers","start_url":"/","display":"standalone","background_color":"#111111","theme_color":"#151515","icons":[{"src":"/images/logo.png","sizes":"192x192","type":"image/png","purpose":"any maskable"}]}
+{"name":"CMH Barbers","short_name":"CMH Barbers","start_url":"./","display":"standalone","background_color":"#111111","theme_color":"#151515","icons":[{"src":"images/logo.png","sizes":"192x192","type":"image/png","purpose":"any maskable"}]}
