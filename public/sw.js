@@ -1,4 +1,0 @@
-self.addEventListener('install',event=>{self.skipWaiting();});
-self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim());});
-self.addEventListener('push',event=>{let data={title:'CMH Barbers',body:'Tienes una actualización.',url:'./'};try{data={...data,...event.data.json()};}catch{}const icon=new URL('images/logo.png',self.registration.scope).href;event.waitUntil(self.registration.showNotification(data.title,{body:data.body,icon,badge:icon,data:{url:data.url}}));});
-self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{const url=new URL(event.notification.data?.url||'./',self.registration.scope).href;for(const client of list){if('focus'in client){client.navigate(url);return client.focus();}}return clients.openWindow(url);}));});
