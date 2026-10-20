@@ -7,7 +7,7 @@
 window.CMH = {
   SUPABASE_URL: "https://ngtaxegnzekyhdexcifb.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_nd8gzrg5YelLhCXlt4B8tg_L6_0rdx9",
-  VAPID_PUBLIC_KEY: "TU_CLAVE_PUBLICA_VAPID",   // solo para las notificaciones push
+  VAPID_PUBLIC_KEY: "BNZEXhmv9mEDOlWYr38i7_D_ZtFL4pqnyvI--Pty4zquHaqqc7JXRxNiRDvKjl3urNzYLViLYSU-d9ia0WWgi2g",   // solo para las notificaciones push
 
   // Usuario "admin" -> correo interno en Supabase Auth (no lo cambies)
   ADMIN_EMAIL: "admin@cmhbarbers.com",
