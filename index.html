@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CMH Barbers · Reserva tu cita</title>
+  <meta name="description" content="Reserva tu cita en CMH Barbers. Elige día y hora libres y reserva en segundos.">
+  <meta name="theme-color" content="#0b0b0c">
+  <link rel="icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar" id="topbar">
+    <div class="wrap">
+      <a class="brand" href="#inicio" aria-label="CMH Barbers"><img src="logo.png" alt="CMH Barbers"></a>
+      <nav class="nav">
+        <a href="#reservar" class="keep">Reservar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <section class="hero">
+      <div class="wrap">
+        <img class="hero-logo" src="logo.png" alt="CMH Barbers">
+        <h1>Tu corte, <em>a tu hora</em></h1>
+        <p class="lead">Elige un hueco libre, escribe tu nombre y teléfono y listo. Sin llamadas, sin esperas.</p>
+        <div class="cta">
+          <a class="btn" href="#reservar">Reservar cita</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block booking" id="reservar">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Reserva online</span>
+          <h2>Elige tu hora</h2>
+          <p>Estos son los huecos libres de los próximos días. Pulsa uno y te pediremos tus datos.</p>
+        </div>
+
+        <div id="state" class="state-msg">Cargando horas disponibles…</div>
+        <div id="picker" hidden>
+          <div class="days" id="days"></div>
+          <div class="times-title" id="timesTitle"></div>
+          <div class="times" id="times"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <img src="logo.png" alt="CMH Barbers">
+      <span>© <span id="yr"></span> CMH Barbers</span>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

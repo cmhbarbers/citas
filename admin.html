@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Panel · CMH Barbers</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0b0b0c">
+  <link rel="icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest-admin.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <div class="login-page" id="loginView" hidden>
+    <div class="login-card">
+      <img src="logo.png" alt="CMH Barbers">
+      <h1>Acceso peluquero</h1>
+      <form id="loginForm" novalidate>
+        <label class="field"><span>Usuario</span><input id="user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+        <label class="field"><span>Contraseña</span><input id="pass" type="password" autocomplete="current-password" required></label>
+        <div class="err" id="loginErr"></div>
+        <div class="actions"><button class="btn" id="loginBtn" type="submit">Entrar</button></div>
+      </form>
+      <a class="back" href="index.html">← Volver a la web</a>
+    </div>
+  </div>
+
+  <!-- ============ PANEL ============ -->
+  <div id="appView" hidden>
+    <header class="admin-top">
+      <div class="wrap">
+        <a class="brand" href="index.html" title="Ver la web de clientes"><img src="logo.png" alt="CMH Barbers"></a>
+        <div class="right">
+          <button class="btn small ghost" id="logout">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-tab="horarios" role="tab">Horarios</button>
+        <button class="tab" data-tab="citas" role="tab">Citas <span class="badge" id="badge" hidden>0</span></button>
+      </div>
+
+      <div class="banner" id="pushBanner" hidden>
+        <p id="pushText"><b>Recibe un aviso en este dispositivo</b> cada vez que un cliente confirme una cita.</p>
+        <button class="btn small" id="pushBtn">Activar notificaciones</button>
+      </div>
+
+      <!-- Horarios -->
+      <section id="tab-horarios">
+        <div class="cal-layout">
+          <div class="cal">
+            <div class="cal-head">
+              <button id="prevM" aria-label="Mes anterior">‹</button>
+              <h3 id="monthTitle"></h3>
+              <button id="nextM" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+            <div class="legend"><span><i></i>Horas libres</span><span><i class="b"></i>Citas cogidas</span></div>
+          </div>
+
+          <div class="daypanel" id="dayPanel">
+            <h3 id="dayTitle"></h3>
+            <p class="hint">Toca una hora para habilitarla (verde) o quitarla. Las rojas ya las ha cogido un cliente.</p>
+            <div class="quick">
+              <button class="chip-btn" data-q="morning">Mañana</button>
+              <button class="chip-btn" data-q="afternoon">Tarde</button>
+              <button class="chip-btn" data-q="all">Todo el día</button>
+              <button class="chip-btn warn" data-q="clear">Quitar libres</button>
+            </div>
+            <div class="slots" id="slots"></div>
+            <div class="repeat">
+              <p>¿Mismo horario los próximos <span id="wdName">lunes</span>?</p>
+              <button class="btn small ghost" id="repeatBtn">Repetir 4 semanas</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Citas -->
+      <section id="tab-citas" hidden>
+        <div id="appts"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
