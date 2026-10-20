@@ -15,12 +15,15 @@
 
   let byDay = new Map();   // "2026-10-20" -> [{id, date}]
   let selectedDay = null;
+  const LOCS = { badajoz: "Badajoz", barcarrota: "Barcarrota" };
+  let filterLoc = "any";
+  try { const v = localStorage.getItem("cmh-loc"); if (v === "badajoz" || v === "barcarrota" || v === "any") filterLoc = v; } catch (_) {}
 
   // ---------- carga de horas libres ----------
   async function load(silent = false) {
     const until = new Date(); until.setDate(until.getDate() + cfg.DAYS_AHEAD + 1);
     const { data, error } = await sb.from("available_slots")
-      .select("id,starts_at").lt("starts_at", until.toISOString()).order("starts_at").limit(1000);
+      .select("id,starts_at,location").lt("starts_at", until.toISOString()).order("starts_at").limit(1000);
     if (error) {
       if (!silent) setState("No se han podido cargar las horas. Recarga la página en unos segundos.");
       return;
@@ -30,7 +33,7 @@
       const d = new Date(r.starts_at);
       const k = dayKey(d);
       if (!byDay.has(k)) byDay.set(k, []);
-      byDay.get(k).push({ id: r.id, date: d });
+      byDay.get(k).push({ id: r.id, date: d, loc: r.location });
     }
     render();
   }
@@ -40,44 +43,67 @@
     $("#picker").hidden = !!msg;
   }
 
-  function render() {
-    if (byDay.size === 0) { setState("Ahora mismo no hay horas libres. Vuelve a mirar pronto."); return; }
-    setState("");
+  function renderLocPick() {
+    const opts = [["any", "Me da igual"], ["badajoz", "Badajoz"], ["barcarrota", "Barcarrota"]];
+    const box = $("#locPick");
+    box.innerHTML = `<span class="loc-label">¿Dónde quieres pelarte?</span><div class="loc-btns">` +
+      opts.map(([k, v]) => `<button type="button" class="loc-btn${filterLoc === k ? " on" : ""}" data-k="${k}">${k === "any" ? "" : "📍 "}${v}</button>`).join("") + `</div>`;
+    box.onclick = (e) => {
+      const b = e.target.closest("[data-k]"); if (!b) return;
+      filterLoc = b.dataset.k; selectedDay = null;
+      try { localStorage.setItem("cmh-loc", filterLoc); } catch (_) {}
+      render();
+    };
+  }
 
-    // Tira de días
+  function render() {
+    setState("");
+    renderLocPick();
+    const vis = (arr) => arr.filter((s) => filterLoc === "any" || s.loc === filterLoc);
+
     const daysEl = $("#days"); daysEl.innerHTML = "";
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    let firstWithSlots = null;
+    const keys = [];
+    let firstWithSlots = null, total = 0;
     for (let i = 0; i <= cfg.DAYS_AHEAD; i++) {
       const d = new Date(today); d.setDate(today.getDate() + i);
-      const k = dayKey(d);
-      const n = (byDay.get(k) || []).length;
+      const k = dayKey(d); keys.push(k);
+      const list = vis(byDay.get(k) || []);
+      const n = list.length; total += n;
       if (n && !firstWithSlots) firstWithSlots = k;
+      const locs = [...new Set(list.map((s) => s.loc))].map((l) => LOCS[l]).join(" · ");
       const b = document.createElement("button");
-      b.className = "day" + (n ? "" : " empty") + (k === selectedDay ? " sel" : "");
+      b.className = "day" + (n ? "" : " empty");
       b.disabled = !n;
+      b.dataset.k = k;
       b.innerHTML = `<span class="dow">${d.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "")}</span>
         <span class="num">${d.getDate()}</span>
         <span class="mon">${d.toLocaleDateString("es-ES", { month: "short" }).replace(".", "")}</span>
-        <span class="cnt">${n ? n + (n === 1 ? " hora" : " horas") : "—"}</span>`;
+        <span class="cnt">${n ? n + (n === 1 ? " hora" : " horas") : "—"}</span>
+        ${n ? `<span class="where">${locs}</span>` : ""}`;
       b.onclick = () => { selectedDay = k; render(); };
       daysEl.appendChild(b);
     }
-    if (!selectedDay || !byDay.has(selectedDay)) selectedDay = firstWithSlots;
-    // marcar seleccionado tras posible cambio
-    [...daysEl.children].forEach((el, i) => {
-      const d = new Date(today); d.setDate(today.getDate() + i);
-      el.classList.toggle("sel", dayKey(d) === selectedDay);
-    });
 
-    // Horas del día
-    const slots = byDay.get(selectedDay) || [];
-    const sd = slots[0]?.date;
-    $("#timesTitle").textContent = sd ? `Horas libres · ${fmtLong(sd)}` : "";
     const timesEl = $("#times"); timesEl.innerHTML = "";
+    if (!total) {
+      daysEl.hidden = true; $("#timesTitle").textContent = "";
+      timesEl.innerHTML = `<div class="state-msg" style="grid-column:1/-1">${filterLoc === "any"
+        ? "Ahora mismo no hay horas libres. Vuelve a mirar pronto."
+        : `Ahora mismo no hay horas libres en ${LOCS[filterLoc]}. Prueba con otra sede o «Me da igual».`}</div>`;
+      return;
+    }
+    daysEl.hidden = false;
+    if (!selectedDay || !keys.includes(selectedDay) || !vis(byDay.get(selectedDay) || []).length) selectedDay = firstWithSlots;
+    [...daysEl.children].forEach((el) => el.classList.toggle("sel", el.dataset.k === selectedDay));
+
+    const slots = vis(byDay.get(selectedDay) || []);
+    const multi = new Set(slots.map((s) => s.loc)).size > 1;
+    const where = [...new Set(slots.map((s) => LOCS[s.loc]))].join(" · ");
+    $("#timesTitle").textContent = `Horas libres · ${fmtLong(slots[0].date)} · 📍 ${where}`;
     for (const s of slots) {
       const b = document.createElement("button");
-      b.className = "time"; b.textContent = fmtTime(s.date);
+      b.className = "time"; b.textContent = fmtTime(s.date) + (multi ? ` · ${LOCS[s.loc]}` : "");
       b.onclick = () => openBooking(s);
       timesEl.appendChild(b);
     }
@@ -113,7 +139,7 @@
       <button class="x" aria-label="Cerrar">×</button>
       <h3>Reserva tu cita</h3>
       <p class="sub">Solo necesitamos tu nombre y un teléfono de contacto.</p>
-      <div class="chosen">📅 ${fmtLong(slot.date)} · <b>${fmtTime(slot.date)}</b></div>
+      <div class="chosen">📅 ${fmtLong(slot.date)} · <b>${fmtTime(slot.date)}</b> · 📍 ${LOCS[slot.loc] || ""}</div>
       <form id="f1" novalidate>
         <div class="row2">
           <label class="field"><span>Nombre</span><input name="fn" autocomplete="given-name" maxlength="40" required></label>
@@ -148,19 +174,20 @@
         return;
       }
       // Avisa al peluquero (push). Si falla, la cita ya está reservada igualmente.
-      try { sb.functions.invoke("notify", { body: { slot_id: slot.id } }); } catch (_) {}
-      stepDone(new Date(data || slot.date), fn);
+      sb.functions.invoke("notify", { body: { slot_id: slot.id } })
+        .then((r) => console.log("notify:", r.data || r.error)).catch((e) => console.warn("notify", e));
+      stepDone(new Date(data || slot.date), fn, slot.loc);
       load(true);
     };
   }
 
-  function stepDone(date, name) {
+  function stepDone(date, name, loc) {
     const o = openModal(`
       <div class="done">
         <div class="tick">✓</div>
         <h3>¡Cita confirmada!</h3>
         <div class="when">${fmtLong(date)}</div>
-        <div class="when"><b>${fmtTime(date)}</b></div>
+        <div class="when"><b>${fmtTime(date)}</b> · ${LOCS[loc] || ""}</div>
         <p style="margin-top:10px">Te esperamos, ${escapeHtml(name)}. Si no puedes venir, avísanos con tiempo.</p>
         <button class="btn" id="fin">Perfecto</button>
       </div>`);

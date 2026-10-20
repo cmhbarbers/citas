@@ -48,9 +48,9 @@
         <button class="tab" data-tab="citas" role="tab">Citas <span class="badge" id="badge" hidden>0</span></button>
       </div>
 
-      <div class="banner" id="pushBanner" hidden>
+      <div class="banner" id="pushBanner">
         <p id="pushText"><b>Recibe un aviso en este dispositivo</b> cada vez que un cliente confirme una cita.</p>
-        <button class="btn small" id="pushBtn">Activar notificaciones</button>
+        <div class="actions" style="flex:0 0 auto"><button class="btn small ghost" id="pushTest" hidden>Enviar prueba</button><button class="btn small" id="pushBtn" hidden>Activar notificaciones</button></div>
       </div>
 
       <!-- Horarios -->
@@ -68,7 +68,8 @@
 
           <div class="daypanel" id="dayPanel">
             <h3 id="dayTitle"></h3>
-            <p class="hint">Toca una hora para habilitarla (verde) o quitarla. Las rojas ya las ha cogido un cliente.</p>
+            <div class="loc-seg" id="locSeg" role="group" aria-label="Sede del día"></div>
+            <p class="hint" id="dayHint"></p>
             <div class="quick">
               <button class="chip-btn" data-q="morning">Mañana</button>
               <button class="chip-btn" data-q="afternoon">Tarde</button>

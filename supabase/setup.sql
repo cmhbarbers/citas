@@ -12,6 +12,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.slots (
   id            uuid primary key default gen_random_uuid(),
   starts_at     timestamptz not null unique,
+  location      text not null default 'badajoz' check (location in ('badajoz', 'barcarrota')),
   status        text not null default 'free' check (status in ('free', 'booked')),
   client_name   text,
   client_phone  text,
@@ -49,7 +50,7 @@ create policy "admin gestiona suscripciones" on public.push_subscriptions
 
 -- 4. Lo que ven los clientes: solo horas libres, sin datos de nadie ------
 create or replace view public.available_slots as
-  select id, starts_at from public.slots
+  select id, starts_at, location from public.slots
   where status = 'free' and starts_at > now();
 grant select on public.available_slots to anon, authenticated;
 

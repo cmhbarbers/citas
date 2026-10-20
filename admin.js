@@ -63,6 +63,8 @@
   let monthSlots = new Map();      // dayKey -> Map(timeKey -> slot)
   let upcoming = [];               // citas futuras
   let knownBooked = null;
+  const LOCS = { badajoz: "Badajoz", barcarrota: "Barcarrota" };
+  const chosenLoc = new Map();     // dayKey -> sede elegida en días aún sin horas
   let channel = null;
 
   const TIMES = (() => {
@@ -107,6 +109,12 @@
     renderCalendar(); renderDay();
   }
 
+  function dayLoc(day) {
+    const k = dayKey(day), m = monthSlots.get(k);
+    if (m && m.size) return [...m.values()][0].location;
+    return chosenLoc.get(k) || null;
+  }
+
   function renderCalendar() {
     const first = new Date(viewYear, viewMonth, 1);
     $("#monthTitle").textContent = first.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
@@ -126,7 +134,8 @@
       const b = document.createElement("button");
       b.className = "cal-day" + (dayKey(d) === dayKey(today0) ? " today" : "") + (dayKey(d) === dayKey(selected) ? " sel" : "");
       b.disabled = d < today0;
-      b.innerHTML = `${n}<span class="dots">${free ? '<i class="dot"></i>' : ""}${booked ? '<i class="dot b"></i>' : ""}</span>`;
+      const lc = m && m.size ? [...m.values()][0].location : chosenLoc.get(k);
+      b.innerHTML = `${lc ? `<em class="loc-tag ${lc}">${lc === "badajoz" ? "BA" : "BC"}</em>` : ""}${n}<span class="dots">${free ? '<i class="dot"></i>' : ""}${booked ? '<i class="dot b"></i>' : ""}</span>`;
       b.onclick = () => { selected = d; renderCalendar(); renderDay(); };
       grid.appendChild(b);
     }
@@ -140,9 +149,21 @@
 
   function renderDay() {
     $("#dayTitle").textContent = fmtLong(selected);
-    $("#wdName").textContent = selected.toLocaleDateString("es-ES", { weekday: "long" }) + "s";
+    { const w = selected.toLocaleDateString("es-ES", { weekday: "long" }); $("#wdName").textContent = w.endsWith("s") ? w : w + "s"; }
     const m = monthSlots.get(dayKey(selected));
+    const loc = dayLoc(selected);
+    const hasBooked = [...(m?.values() || [])].some((s) => s.status === "booked");
+
+    $("#locSeg").innerHTML = Object.entries(LOCS).map(([k, v]) =>
+      `<button type="button" class="seg-btn${loc === k ? " on" : ""}" data-loc="${k}"${hasBooked && loc !== k ? " disabled" : ""}>📍 ${v}</button>`).join("");
+    $("#dayHint").textContent = !loc
+      ? "Elige primero dónde vas a pelar este día."
+      : hasBooked
+        ? `Este día pelas en ${LOCS[loc]} (ya hay citas, no se puede cambiar de sitio). Toca una hora para habilitarla o quitarla.`
+        : `Este día pelas en ${LOCS[loc]}. Toca una hora para habilitarla (verde) o quitarla. Las rojas ya las ha cogido un cliente.`;
+
     const box = $("#slots"); box.innerHTML = "";
+    box.classList.toggle("needloc", !loc);
     const now = new Date();
     for (const [h, mi] of TIMES) {
       const d = slotDate(selected, h, mi);
@@ -157,13 +178,38 @@
     }
   }
 
+  $("#locSeg").onclick = (e) => {
+    const b = e.target.closest("[data-loc]");
+    if (b && !b.disabled) setLoc(b.dataset.loc);
+  };
+
+  async function setLoc(loc) {
+    const k = dayKey(selected), m = monthSlots.get(k);
+    if (m && m.size) {
+      if ([...m.values()].some((s) => s.status === "booked") && dayLoc(selected) !== loc)
+        return toast("Este día ya tiene citas. Cancélalas para cambiar de sede.");
+      const from = slotDate(selected, 0, 0), to = slotDate(selected, 23, 59);
+      const { error } = await sb.from("slots").update({ location: loc }).eq("status", "free")
+        .gte("starts_at", from.toISOString()).lte("starts_at", to.toISOString());
+      if (error) return toast("No se ha podido cambiar la sede");
+      toast(`Sede del día: ${LOCS[loc]}`);
+      return loadMonth();
+    }
+    chosenLoc.set(k, loc);
+    renderCalendar(); renderDay();
+  }
+
+  const needLoc = () => { toast("Elige primero Badajoz o Barcarrota para este día"); };
+
   async function toggleSlot(d, s) {
     if (s?.status === "booked") return toast("Esa hora ya tiene cliente. Cancélala desde la pestaña Citas.");
     if (s) {
       const { error } = await sb.from("slots").delete().eq("id", s.id).eq("status", "free");
       if (error) return toast("No se ha podido quitar la hora");
     } else {
-      const { error } = await sb.from("slots").insert({ starts_at: d.toISOString() });
+      const loc = dayLoc(d);
+      if (!loc) return needLoc();
+      const { error } = await sb.from("slots").insert({ starts_at: d.toISOString(), location: loc });
       if (error) return toast("No se ha podido habilitar la hora");
     }
     await loadMonth();
@@ -180,9 +226,11 @@
       toast("Horas libres quitadas");
       return loadMonth();
     }
+    const loc = dayLoc(selected);
+    if (!loc) return needLoc();
     const rows = TIMES.filter(([h]) => kind === "all" || (kind === "morning" ? h < 14 : h >= 16))
       .map(([h, m]) => slotDate(selected, h, m)).filter((d) => d > now)
-      .map((d) => ({ starts_at: d.toISOString() }));
+      .map((d) => ({ starts_at: d.toISOString(), location: loc }));
     if (!rows.length) return toast("No hay horas que añadir en ese tramo");
     const { error } = await sb.from("slots").upsert(rows, { onConflict: "starts_at", ignoreDuplicates: true });
     if (error) return toast("No se han podido habilitar las horas");
@@ -192,17 +240,18 @@
   $("#repeatBtn").onclick = async () => {
     const m = monthSlots.get(dayKey(selected));
     if (!m || !m.size) return toast("Primero habilita alguna hora en este día");
+    const loc = dayLoc(selected);
     const times = [...m.keys()].map((k) => k.split(":").map(Number));
     const rows = [];
     for (let w = 1; w <= 4; w++) {
       const day = new Date(selected); day.setDate(selected.getDate() + 7 * w);
-      for (const [h, mi] of times) rows.push({ starts_at: slotDate(day, h, mi).toISOString() });
+      for (const [h, mi] of times) rows.push({ starts_at: slotDate(day, h, mi).toISOString(), location: loc });
     }
     const btn = $("#repeatBtn"); btn.disabled = true;
     const { error } = await sb.from("slots").upsert(rows, { onConflict: "starts_at", ignoreDuplicates: true });
     btn.disabled = false;
     if (error) return toast("No se ha podido repetir el horario");
-    toast("Horario repetido en las próximas 4 semanas");
+    toast(`Horario repetido en ${LOCS[loc]} las próximas 4 semanas`);
     loadMonth();
   };
 
@@ -221,7 +270,7 @@
     knownBooked = ids;
     if (fresh.size) {
       const s = data.find((x) => fresh.has(x.id));
-      toast(`🔔 Nueva cita: ${s.client_name} · ${timeKey(new Date(s.starts_at))}`);
+      toast(`🔔 Nueva cita: ${s.client_name} · ${timeKey(new Date(s.starts_at))} · ${LOCS[s.location] || ""}`);
     }
     upcoming = data;
     renderAppointments(fresh);
@@ -245,7 +294,7 @@
         const el = document.createElement("div");
         el.className = "appt" + (fresh.has(s.id) ? " new" : "");
         el.innerHTML = `<div class="t">${timeKey(new Date(s.starts_at))}</div>
-          <div class="who"><b>${escapeHtml(s.client_name)}</b><a href="tel:${escapeHtml(s.client_phone)}">${escapeHtml(s.client_phone)}</a></div>
+          <div class="who"><b>${escapeHtml(s.client_name)}</b><span class="loc-pill ${s.location}">📍 ${LOCS[s.location] || ""}</span> <a href="tel:${escapeHtml(s.client_phone)}">${escapeHtml(s.client_phone)}</a></div>
           <button class="btn small danger">Eliminar</button>`;
         $("button", el).onclick = () => confirmDelete(s);
         sec.appendChild(el);
@@ -260,7 +309,7 @@
     o.innerHTML = `<div class="modal">
       <button class="x" aria-label="Cerrar">×</button>
       <h3>Eliminar cita</h3>
-      <p class="sub"><b>${escapeHtml(s.client_name)}</b> · ${fmtLong(d)} a las ${timeKey(d)}</p>
+      <p class="sub"><b>${escapeHtml(s.client_name)}</b> · ${fmtLong(d)} a las ${timeKey(d)} · ${LOCS[s.location] || ""}</p>
       <div class="actions" style="flex-direction:column;align-items:stretch">
         <button class="btn danger" data-a="free">Cancelar y dejar la hora libre</button>
         <button class="btn ghost" data-a="remove">Cancelar y quitar la hora</button>
@@ -309,34 +358,36 @@
 
   async function setupPush() {
     const banner = $("#pushBanner"), text = $("#pushText"), btn = $("#pushBtn");
+    banner.hidden = false;
+    const testBtn = $("#pushTest");
+    testBtn.hidden = true;
+    const info = (html, showBtn = false, label) => {
+      text.innerHTML = html; btn.hidden = !showBtn; btn.disabled = false;
+      testBtn.hidden = !(showBtn && label === "Desactivar");
+      if (label) btn.textContent = label;
+    };
+    testBtn.onclick = sendTest;
+
     if ("serviceWorker" in navigator) {
       try { await navigator.serviceWorker.register("sw.js"); } catch (e) { console.warn("SW", e); }
     }
-    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-    if (!supported || cfg.VAPID_PUBLIC_KEY.startsWith("TU_")) {
-      if (isIOS && !standalone) {
-        banner.hidden = false; btn.hidden = true;
-        text.innerHTML = "<b>Para recibir avisos en iPhone</b>, pulsa Compartir → «Añadir a pantalla de inicio» y abre el panel desde ese icono.";
-      }
-      return;
-    }
-    if (isIOS && !standalone) {
-      banner.hidden = false; btn.hidden = true;
-      text.innerHTML = "<b>Para recibir avisos en iPhone</b>, pulsa Compartir → «Añadir a pantalla de inicio» y abre el panel desde ese icono.";
-      return;
-    }
+    if (isIOS && !standalone)
+      return info("<b>Para recibir avisos en iPhone</b>: pulsa Compartir → «Añadir a pantalla de inicio» y abre el panel desde ese icono.");
+    if (!window.isSecureContext || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window))
+      return info("Este navegador no admite notificaciones push. Usa Chrome (Android/PC) o Safari 16.4+ con la web añadida a la pantalla de inicio.");
+    if (!cfg.VAPID_PUBLIC_KEY || cfg.VAPID_PUBLIC_KEY.startsWith("TU_"))
+      return info("<b>Falta la clave VAPID.</b> Pega la clave pública en <code>config.js</code> (<code>VAPID_PUBLIC_KEY</code>) y vuelve a subir el archivo a GitHub (paso 6 de SETUP.md).");
+    if (Notification.permission === "denied")
+      return info("Las notificaciones están <b>bloqueadas</b> en este navegador. Pulsa el candado de la barra de direcciones → Notificaciones → Permitir, y recarga.");
+
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     if (existing && Notification.permission === "granted") {
-      await saveSub(existing);          // asegura que esté guardada
-      banner.hidden = true; return;
+      await saveSub(existing);
+      info("✅ <b>Notificaciones activadas</b> en este dispositivo.", true, "Desactivar");
+      return wireOff(btn, existing, info, reg);
     }
-    if (Notification.permission === "denied") {
-      banner.hidden = false; btn.hidden = true;
-      text.innerHTML = "Las notificaciones están bloqueadas en este navegador. Actívalas en los ajustes del sitio para recibir avisos de nuevas citas.";
-      return;
-    }
-    banner.hidden = false; btn.hidden = false;
+    info("<b>Recibe un aviso en este dispositivo</b> cada vez que un cliente confirme una cita.", true, "Activar notificaciones");
     btn.onclick = async () => {
       btn.disabled = true;
       try {
@@ -344,11 +395,43 @@
         if (perm !== "granted") { toast("Permiso de notificaciones no concedido"); btn.disabled = false; return; }
         const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(cfg.VAPID_PUBLIC_KEY) });
         await saveSub(sub);
-        banner.hidden = true;
         toast("✅ Notificaciones activadas en este dispositivo");
+        wireOff(btn, sub, info, reg);
+        info("✅ <b>Notificaciones activadas</b> en este dispositivo.", true, "Desactivar");
       } catch (e) {
         console.error(e); toast("No se han podido activar las notificaciones"); btn.disabled = false;
       }
+    };
+  }
+
+  async function sendTest() {
+    const b = $("#pushTest"); b.disabled = true; b.textContent = "Enviando…";
+    const { data, error } = await sb.functions.invoke("notify", { body: { test: true } });
+    b.disabled = false; b.textContent = "Enviar prueba";
+    let res = data;
+    if (error) {
+      try { res = await error.context.json(); } catch (_) {}
+      if (!res) res = { error: error.message || "No se pudo llamar a la función «notify». ¿Está desplegada con Verify JWT desactivado?" };
+    }
+    console.log("notify test:", res);
+    const t = $("#pushText");
+    if (res?.sent > 0) {
+      t.innerHTML = `✅ <b>Prueba enviada</b> a ${res.sent} de ${res.subscriptions} dispositivo(s). Si no ves nada, revisa los permisos de notificaciones del navegador/sistema.`;
+    } else {
+      const f = res?.failures?.[0];
+      t.innerHTML = `❌ <b>La prueba ha fallado.</b> ${escapeHtml(res?.error || (f ? `El servicio push respondió ${f.status ?? ""}: ${f.message}` : "Sin detalles"))}`;
+    }
+  }
+
+  function wireOff(btn, sub, info, reg) {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const cur = (await reg.pushManager.getSubscription()) || sub;
+        await sb.from("push_subscriptions").delete().eq("endpoint", cur.endpoint);
+        await cur.unsubscribe();
+      } catch (e) { console.error(e); }
+      setupPush();
     };
   }
 

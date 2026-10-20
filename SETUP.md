@@ -53,3 +53,17 @@ Nunca uses la clave `service_role` en la web.
 ## Ajustes rápidos (`config.js`)
 - `OPEN_HOUR`, `CLOSE_HOUR`, `STEP_MIN`: horas y duración de cada hueco del calendario admin.
 - `DAYS_AHEAD`: días vista para los clientes.
+
+## Si no llegan las notificaciones
+1. En `admin.html` (con sesión iniciada) pulsa **Enviar prueba** (aparece cuando las notificaciones están activadas). El mensaje te dice qué falla:
+   - *No se pudo llamar a la función «notify»* → la función no está desplegada con ese nombre, o tiene **Verify JWT activado** (desactívalo).
+   - *Faltan los secretos / claves VAPID no válidos* → revisa los 3 secretos. `VAPID_SUBJECT` debe empezar por `mailto:` (ej. `mailto:tucorreo@gmail.com`). La pública y la privada deben ser la pareja generada junta.
+   - *No hay ningún dispositivo suscrito* → pulsa «Activar notificaciones».
+   - *El servicio push respondió 401/403* → la clave pública de `config.js` no coincide con la de Supabase. Corrígela, sube `config.js`, y en el panel pulsa **Desactivar** y luego **Activar** otra vez.
+2. Si la prueba llega pero las de citas no: Supabase > Edge Functions > notify > Logs, mientras haces una reserva de prueba.
+3. Revisa que el navegador/sistema permita notificaciones para esa web (en Android: Ajustes > Apps > Chrome > Notificaciones).
+
+## Sedes (Badajoz / Barcarrota)
+- Si ya tenías la base de datos creada, ejecuta `supabase/migracion-sedes.sql` en el SQL Editor (las horas antiguas quedan en Badajoz).
+- Si la creas desde cero, `supabase/setup.sql` ya incluye las sedes.
+- Vuelve a desplegar la función `notify` con el nuevo `supabase/notify.ts` (el aviso incluye la sede).
