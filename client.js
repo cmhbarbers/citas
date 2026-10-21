@@ -1,7 +1,10 @@
 /* CMH Barbers · parte del cliente */
 (() => {
   const cfg = window.CMH;
-  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  // Esta página es PÚBLICA: nunca usa la sesión del admin, aunque esté abierta en el mismo navegador.
+  const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
   const $ = (s, r = document) => r.querySelector(s);
 
   document.getElementById("yr").textContent = new Date().getFullYear();
@@ -22,15 +25,16 @@
   // ---------- carga de horas libres ----------
   async function load(silent = false) {
     const until = new Date(); until.setDate(until.getDate() + cfg.DAYS_AHEAD + 1);
-    const { data, error } = await sb.from("available_slots")
-      .select("id,starts_at,location").lt("starts_at", until.toISOString()).order("starts_at").limit(1000);
+    const { data, error } = await sb.rpc("get_available_slots");
     if (error) {
-      if (!silent) setState("No se han podido cargar las horas. Recarga la página en unos segundos.");
+      console.error("get_available_slots", error);
+      if (!silent) setState("No se han podido cargar las horas. Recarga la página en unos segundos. (" + (error.code || error.message || "error") + ")");
       return;
     }
     byDay = new Map();
     for (const r of data) {
       const d = new Date(r.starts_at);
+      if (d >= until) continue;
       const k = dayKey(d);
       if (!byDay.has(k)) byDay.set(k, []);
       byDay.get(k).push({ id: r.id, date: d, loc: r.location });
