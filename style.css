@@ -285,3 +285,11 @@ footer img { height: 36px; opacity: .9; }
 .loc-pill.barcarrota { background: #3b2a12; color: #f1c27d; }
 
 .cal-head h3::first-letter, .daypanel h3::first-letter, .appt-day h3::first-letter { text-transform: uppercase; }
+
+/* ---------- Añadir cita manual ---------- */
+.field select, .field input[type="date"] { width: 100%; padding: 13px 14px; background: var(--ink); border: 1px solid var(--line); border-radius: 3px; outline: none; color: var(--bone); font: inherit; color-scheme: dark; }
+.field select:focus, .field input[type="date"]:focus { border-color: var(--red); }
+.chip-btn.add { border-color: var(--red); color: #fff; background: var(--red-deep); }
+.chip-btn.add:hover { background: var(--red); }
+.appt-tools { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+.appt .who .nophone { color: var(--muted); font-size: .85rem; font-style: italic; }
