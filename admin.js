@@ -63,6 +63,7 @@
   let monthSlots = new Map();      // dayKey -> Map(timeKey -> slot)
   let upcoming = [];               // citas futuras
   let knownBooked = null;
+  let quietUntil = 0;              // evita el aviso «Nueva cita» cuando la añade el propio admin
   const LOCS = { badajoz: "Badajoz", barcarrota: "Barcarrota" };
   const chosenLoc = new Map();     // dayKey -> sede elegida en días aún sin horas
   let channel = null;
@@ -268,7 +269,7 @@
     const fresh = new Set();
     if (knownBooked) for (const id of ids) if (!knownBooked.has(id)) fresh.add(id);
     knownBooked = ids;
-    if (fresh.size) {
+    if (fresh.size && Date.now() > quietUntil) {
       const s = data.find((x) => fresh.has(x.id));
       toast(`🔔 Nueva cita: ${s.client_name} · ${timeKey(new Date(s.starts_at))} · ${LOCS[s.location] || ""}`);
     }
@@ -294,7 +295,7 @@
         const el = document.createElement("div");
         el.className = "appt" + (fresh.has(s.id) ? " new" : "");
         el.innerHTML = `<div class="t">${timeKey(new Date(s.starts_at))}</div>
-          <div class="who"><b>${escapeHtml(s.client_name)}</b><span class="loc-pill ${s.location}">📍 ${LOCS[s.location] || ""}</span> <a href="tel:${escapeHtml(s.client_phone)}">${escapeHtml(s.client_phone)}</a></div>
+          <div class="who"><b>${escapeHtml(s.client_name)}</b><span class="loc-pill ${s.location}">📍 ${LOCS[s.location] || ""}</span> ${s.client_phone ? `<a href="tel:${escapeHtml(s.client_phone)}">${escapeHtml(s.client_phone)}</a>` : `<span class="nophone">Sin teléfono</span>`}</div>
           <button class="btn small danger">Eliminar</button>`;
         $("button", el).onclick = () => confirmDelete(s);
         sec.appendChild(el);
@@ -332,6 +333,100 @@
       toast("Cita eliminada");
       loadAppointments(); loadMonth();
     }));
+  }
+
+  // =====================================================================
+  //  Añadir cita manualmente (cliente que escribe por WhatsApp, en persona…)
+  // =====================================================================
+  $("#addManual").onclick = () => openManual(selected);
+  $("#addManual2").onclick = () => openManual(selected);
+
+  function openManual(initialDay) {
+    const o = document.createElement("div"); o.className = "overlay";
+    o.innerHTML = `<div class="modal">
+      <button class="x" aria-label="Cerrar">×</button>
+      <h3>Añadir cita</h3>
+      <p class="sub">Para un cliente que te ha escrito por WhatsApp o en persona. No recibirá ningún SMS.</p>
+      <div class="row2">
+        <label class="field"><span>Día</span><input type="date" id="mDate" min="${dayKey(today0)}" value="${dayKey(initialDay < today0 ? today0 : initialDay)}"></label>
+        <label class="field"><span>Hora</span><select id="mTime"></select></label>
+      </div>
+      <div class="field"><span>Sede</span><div class="loc-seg" id="mLoc"></div></div>
+      <label class="field"><span>Nombre y apellidos</span><input id="mName" maxlength="80" autocomplete="off"></label>
+      <label class="field"><span>Teléfono (opcional)</span><input id="mPhone" type="tel" inputmode="tel" maxlength="20" placeholder="612 345 678" autocomplete="off"></label>
+      <div class="err" id="mErr"></div>
+      <div class="actions"><button class="btn" id="mSave">Guardar cita</button></div>
+    </div>`;
+    document.body.appendChild(o);
+    const close = () => o.remove();
+    $(".x", o).onclick = close;
+    o.onmousedown = (e) => { if (e.target === o) close(); };
+    const dateEl = $("#mDate", o), timeEl = $("#mTime", o), locEl = $("#mLoc", o), errEl = $("#mErr", o), saveBtn = $("#mSave", o);
+
+    let daySlots = new Map(), lockedLoc = null, pickedLoc = null;
+
+    const parseDay = () => { const [y, m, d] = dateEl.value.split("-").map(Number); return y ? new Date(y, m - 1, d) : null; };
+
+    function drawLoc() {
+      locEl.innerHTML = Object.entries(LOCS).map(([k, v]) =>
+        `<button type="button" class="seg-btn${pickedLoc === k ? " on" : ""}" data-loc="${k}"${lockedLoc && lockedLoc !== k ? " disabled" : ""}>📍 ${v}</button>`).join("");
+    }
+    locEl.onclick = (e) => { const b = e.target.closest("[data-loc]"); if (b && !b.disabled) { pickedLoc = b.dataset.loc; drawLoc(); } };
+
+    async function loadDay() {
+      errEl.textContent = "";
+      const day = parseDay();
+      timeEl.innerHTML = ""; daySlots = new Map(); lockedLoc = null;
+      if (!day || day < today0) { timeEl.innerHTML = `<option value="">—</option>`; drawLoc(); return; }
+      const { data, error } = await sb.from("slots").select("*")
+        .gte("starts_at", slotDate(day, 0, 0).toISOString()).lte("starts_at", slotDate(day, 23, 59).toISOString());
+      if (error) { errEl.textContent = "No se han podido cargar las horas de ese día."; return; }
+      for (const s of data) daySlots.set(timeKey(new Date(s.starts_at)), s);
+      lockedLoc = data.length ? data[0].location : null;
+      pickedLoc = lockedLoc || chosenLoc.get(dayKey(day)) || null;
+      const now = new Date();
+      const opts = TIMES.filter(([h, mi]) => slotDate(day, h, mi) > now)
+        .map(([h, mi]) => ({ k: `${pad(h)}:${pad(mi)}` }))
+        .filter(({ k }) => daySlots.get(k)?.status !== "booked");
+      timeEl.innerHTML = opts.length
+        ? opts.map(({ k }) => `<option value="${k}">${k}${daySlots.has(k) ? " · habilitada" : ""}</option>`).join("")
+        : `<option value="">Sin horas disponibles</option>`;
+      drawLoc();
+    }
+    dateEl.onchange = loadDay;
+    loadDay();
+    $("#mName", o).focus();
+
+    saveBtn.onclick = async () => {
+      errEl.textContent = "";
+      const day = parseDay(), t = timeEl.value;
+      const name = $("#mName", o).value.replace(/\s+/g, " ").trim();
+      const phone = $("#mPhone", o).value.replace(/[\s\-().]/g, "");
+      if (!day || !t) return (errEl.textContent = "Elige un día y una hora.");
+      if (!pickedLoc) return (errEl.textContent = "Elige la sede (Badajoz o Barcarrota).");
+      if (name.length < 2) return (errEl.textContent = "Escribe el nombre del cliente.");
+      if (phone && !/^(\+|00)?\d{9,15}$/.test(phone)) return (errEl.textContent = "El teléfono no es válido (déjalo vacío si no lo tienes).");
+
+      const [h, mi] = t.split(":").map(Number);
+      const when = slotDate(day, h, mi);
+      if (when <= new Date()) return (errEl.textContent = "Esa hora ya ha pasado.");
+
+      saveBtn.disabled = true; saveBtn.textContent = "Guardando…";
+      quietUntil = Date.now() + 6000;
+      const fields = { status: "booked", client_name: name, client_phone: phone || null, booked_at: new Date().toISOString(), notified: true };
+      const existing = daySlots.get(t);
+      let error;
+      if (existing) {
+        ({ error } = await sb.from("slots").update(fields).eq("id", existing.id).eq("status", "free"));
+      } else {
+        ({ error } = await sb.from("slots").insert({ starts_at: when.toISOString(), location: pickedLoc, ...fields }));
+      }
+      saveBtn.disabled = false; saveBtn.textContent = "Guardar cita";
+      if (error) { errEl.textContent = "No se ha podido guardar (¿alguien acaba de coger esa hora?). Prueba con otra."; loadDay(); return; }
+      close();
+      toast(`✅ Cita añadida: ${name} · ${t} · ${LOCS[pickedLoc]}`);
+      await loadAppointments(); await loadMonth();
+    };
   }
 
   // =====================================================================
